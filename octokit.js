@@ -1,7 +1,7 @@
 import { Octokit } from "octokit";
 
 const octokit = new Octokit({ 
-  auth: 'YOUR-TOKEN',
+  auth: process.env.ACCESS_TOKEN,
 });
 
 async function getChangedFiles({owner, repo, pullNumber}) {

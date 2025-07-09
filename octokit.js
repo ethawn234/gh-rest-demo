@@ -1,10 +1,21 @@
 import { Octokit } from "octokit";
+import dotenv from 'dotenv';
+dotenv.config()
 
-const octokit = new Octokit({ 
-  auth: process.env.ACCESS_TOKEN,
+const octokit = new Octokit({
+  auth: process.env.TOKEN
+})
+
+const res = await octokit.request('GET /user', {
+  headers: {
+    'X-GitHub-Api-Version': '2022-11-28'
+  }
 });
 
-async function getChangedFiles({owner, repo, pullNumber}) {
+console.log(res.status)
+getChangedFiles('ethawn234', 'gh-rest-demo')
+
+export async function getChangedFiles({owner, repo, pullNumber}) {
   let filesChanged = []
 
   try {

@@ -1,9 +1,9 @@
 import { Octokit } from "octokit";
+import { getChangedFiles } from "./octokit.js";
 import dotenv from 'dotenv';
 dotenv.config()
 
-console.log(process.env.TOKEN)
-const octokit = new Octokit({
+export const octokit = new Octokit({
   auth: process.env.TOKEN
 })
 
@@ -13,4 +13,7 @@ const res = await octokit.request('GET /user', {
   }
 });
 
-console.log(res)
+console.log(res.status)
+
+const getChangedFilesRes = await getChangedFiles('ethawn234', 'gh-rest-demo');
+console.log(getChangedFilesRes)

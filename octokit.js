@@ -6,22 +6,25 @@ const octokit = new Octokit({
   auth: process.env.TOKEN
 })
 
-const res = await octokit.request('GET /user', {
-  headers: {
-    'X-GitHub-Api-Version': '2022-11-28'
-  }
-});
-
-console.log(res.status)
-
-const repos = async function getRepos(){
-  // takes single arg: list of repos
-  // fetch all repos & branches in list
-  // return an object where k,v is { repo: branches[] }
+async function auth() {
+  
+  const token = await octokit.request('GET /user', {
+    headers: {
+      'X-GitHub-Api-Version': '2022-11-28'
+    }
+  });
+  return token;
 }
 
-async function _validateBranchProtection(){
-  // takes repo & branch and returns boolean for branch protection status
+async function getBranches(owner, repoName){
+  const branches = await octokit.request('GET /repos/{owner}/{repo}/branches', {
+    owner: owner,
+    repo: repoName,
+    headers: {
+      'X-GitHub-Api-Version': '2022-11-28'
+    }
+  });
+  return branches;
 }
 
 async function updateFile(owner, repo, path){
@@ -53,13 +56,41 @@ async function updateFile(owner, repo, path){
   }
 }
 
-const updateAFile = await updateFile('ethawn234', 'gh-rest-demo', );
-console.log(updateAFile)
+async function main(){
+  try {
+    // auth
+    const authStatus = await auth();
+    if (authStatus.status != 200){
+      throw new Error(`Auth failure for ${authStatus.data.login}. Status returned: ${authStatus.status}`)
+    } else {
+      console.log(`Authentication success for ${authStatus.data.login}. Status: ${authStatus.status}`)
+    }
 
-async function entryPoint(){
-  // routing function
-  // call getRepos to list all repos that need code quality flag
-  // iterates through list of objects keyed by repoName. The value is a list of all branches in the repo
-  // call _validateBranchProtection to determine branch protection
-  // call updateFile
+    // call getBranches to list all branches for current repo
+    repos.forEach(async (repo, i) => {
+      const response = await getBranches(owner, repo);
+      if (response.status == 200 && response.data.length > 0){
+        response.data.forEach(branch => {
+          const isProtected = branch.protected;
+          
+          if(isProtected == false){
+            // br is unprotected; add flag directly
+            updateFile(owner, repoName, )
+          } else {
+            // update file and create PR
+          }
+        })
+      }
+      i == 0 && console.log('branches: ', branches)
+    })
+  } catch (error) {
+    if (error.response) {
+      console.error(`Error! Status: ${error.response.status}. Message: ${error.response.data.message}`)
+    }
+    console.error(error)
+  }  
 }
+
+main()
+const owner = 'ethawn234';
+const repos = ['gha-docker', 'gha-custom-actions', 'gha-data'];

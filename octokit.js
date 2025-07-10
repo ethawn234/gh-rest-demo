@@ -75,6 +75,7 @@ async function main(){
           
           if(isProtected == false){
             // br is unprotected; add flag directly
+            // review the docs; need to find the correct args; need to verify update is to target file in correct repo & branch
             updateFile(owner, repoName, )
           } else {
             // update file and create PR

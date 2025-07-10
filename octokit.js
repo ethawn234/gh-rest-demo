@@ -28,12 +28,6 @@ async function getBranches(owner, repoName){
   return branches;
 }
 
-// curl -L \
-//   -H "Accept: application/vnd.github+json" \
-//   -H "Authorization: Bearer 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" \
-//   -H "X-GitHub-Api-Version: 2022-11-28" \
-//   'https://api.github.com/repos/ethawn234/gha-docker/contents/.github/workflows/test.yml'
-
 async function _getFileSha(owner, repo, fileName) {
   const getFileSha = await octokit.request('GET /repos/{owner}/{repo}/contents/.github/workflows/{file_sha}', { // get file sha
     owner: owner,

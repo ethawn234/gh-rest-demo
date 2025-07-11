@@ -19,8 +19,6 @@ async function auth() {
   return token;
 }
 
-
-// refactor to get single branch
 async function getBranches(owner, repoName){
   const branches = await octokit.request('GET /repos/{owner}/{repo}/branches', {
     owner: owner,
@@ -56,14 +54,32 @@ async function _getFileContents(owner, repo, branch, fileName) {
 // Name, Type, Description
 // message string Required The commit message.
 // content string Required The new file content, using Base64 encoding.
-async function updateFile(owner, repo, path, branch, fileContents, fileSHA){
+async function updateFile(owner, repo, path, branch, fileContents, fileSHA, isProtected){
   try {
     const data = yaml.load(fileContents, JSON_SCHEMA);
     data.jobs.validate_get_last_build_wf.steps.push({ name: 'My Extra Step', run: 'echo Hello' });
     const modified = yaml.dump(data);
     const updatedContent = Buffer.from(modified, 'utf8').toString('base64');
 
-    // unprotected files updated in all branches; make this request idempotent -> this currently appends
+    // if protected branch, only target branch for modification needs to be changed here
+    if(isProtected == true){
+      // create PR for protected branches
+      // 1. cut new branch from protected branch
+      // 2. modify file
+      // 3. create PR
+      const createBranch = await octokit.request('POST /repos/{owner}/{repo}/git/refs', {
+        owner,
+        repo,
+        ref: `refs/heads/add-flag`,
+        sha: fileSHA,
+        headers: {
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      });
+
+    } 
+
+    // unprotected files updated in all branches; make this request idempotent -> this currently appends; may be necessary if this script is reused for branches that already have required logic
     const pushChange = await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
       owner: owner,
       repo: repo,
@@ -81,7 +97,7 @@ async function updateFile(owner, repo, path, branch, fileContents, fileSHA){
       }
     });
 
-    // console.log('pushChange: ', pushChange)
+    console.log(`pushChange-${branch}: `, pushChange)
   } catch (error) {
     if (error.response) {
       console.error(`Error! Status: ${error.response.status}. Message: ${error.response.data.message}`)
@@ -101,42 +117,20 @@ async function main(){
       console.log(`Authentication success for ${authStatus.data.login}. Status: ${authStatus.status}`)
     }
 
-    // Steps
-    // from repoNames[], fetch each repo
-    // for each repo, fetch all branches
-
-    // for all protected branches, update yml & create PR
-    // for all unprotected branches, update yml & push
-      // target file is identified via its sha
-        // currently, 1st modification succeeds and all subsequent reqs fail with 409: non-matching sha - WHY?!!
-
     repos.forEach(async (repo, i) => {
-      const branches = await getBranches(owner, repo); // gets all branches; response.data[{br},..]
-      // [{
-      //   name: 'abcd',
-      //   commit: [Object],
-      //   protected: false,
-      //   protection: [Object],
-      //   protection_url: 'https://api.github.com/repos/ethawn234/gha-docker/branches/abcd/protection'
-      // },]
+      const branches = await getBranches(owner, repo); 
       
       if (branches.status == 200 && branches.data.length > 0){
         branches.data.forEach(async branch => {
           const isProtected = branch.protected;
           const branchName = branch.name;
           
-          if(isProtected == false){
-            // br is unprotected; add flag directly
-            const fileContentsResponse = await _getFileContents(owner, repo, branchName, 'test.yml'); // replace file with target file
-            const fileSHA = fileContentsResponse.data.sha;
-            const file = Buffer.from(fileContentsResponse.data.content, 'base64').toString('utf8');
+          const fileContentsResponse = await _getFileContents(owner, repo, branchName, 'test.yml'); // replace file with target file
+          const fileSHA = fileContentsResponse.data.sha;
+          const file = Buffer.from(fileContentsResponse.data.content, 'base64').toString('utf8');
 
-            // console.log(`${repo}-${i}-${branchName}-${fileSHA} type: ${typeof file} file: \n${file}\n`)
-            updateFile(owner, repo, path, branchName, file, fileSHA) 
-          } else {
-            // update file and create PR
-            console.log('protected br')
-          }
+          // console.log(`${repo}-${i}-${branchName}-${fileSHA} type: ${typeof file} file: \n${file}\n`)
+          isProtected == true && updateFile(owner, repo, path, branchName, file, fileSHA, isProtected) 
         })
       }
     })

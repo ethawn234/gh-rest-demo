@@ -1,7 +1,8 @@
 import { Octokit } from "octokit";
-import yaml, { DEFAULT_SCHEMA, JSON_SCHEMA } from "js-yaml";
+import YAML from 'yaml'
 import dotenv from "dotenv";
 dotenv.config();
+
 
 // instantiate octokit
 const octokit = new Octokit({
@@ -46,6 +47,55 @@ async function _getFileContents(owner, repo, branch, fileName) {
   return getFileContent;
 }
 
+function _addFlag(fileContents){
+  // 1. Parse with AST awareness
+  const doc = YAML.parseDocument(fileContents);
+
+  // 2. Access the `jobs.ci.with` mapping
+  const withNode = doc.getIn(['jobs', 'ci', 'with']);
+
+  // 3. Add new field cleanly
+  withNode.set('code-qual', true);
+
+  // 4. Dump with formatting preserved
+  let modified = doc.toString();
+  // post-process fix: fix 4-space expectation for `on.push`
+  modified = modified.replace(/^ {6}- /gm, '    - ');
+  const updatedContent = Buffer.from(modified, 'utf8').toString('base64');
+
+  return updatedContent;
+}
+
+async function _getBaseBrSha(owner, repo, branch){
+  const getBaseBranchSHA = await octokit.request(
+    "GET /repos/{owner}/{repo}/branches/{branch}",
+    {
+      owner,
+      repo,
+      branch,
+      headers: {
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    },
+  );
+  return getBaseBranchSHA.data.commit.sha;
+}
+
+async function _createNewBranch(owner, repo, baseSha) {
+  return await octokit.request(
+    "POST /repos/{owner}/{repo}/git/refs",
+    {
+      owner,
+      repo,
+      ref: "refs/heads/addFlag",
+      sha: baseSha,
+      headers: {
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    },
+  );
+}
+
 async function updateFile(
   owner,
   repo,
@@ -55,74 +105,56 @@ async function updateFile(
   fileSHA,
   isProtected,
 ) {
-  try {
-    const data = yaml.load(fileContents);
-
-    data.jobs.ci.with["code-qual"] = true;
-    // console.dir(data, { depth: null }) // json is proper json & directly modificable; console.log() abbreviates object vals
-
-    const modified = yaml.dump(data);
-    const updatedContent = Buffer.from(modified, "utf8").toString("base64");
-
+  try {    
     let response;
 
     // if protected branch, only target branch for modification needs to be changed here
     if (isProtected == true) {
-      // create new branch from protected branch
+      // 1. get protected branch sha
+      const baseSha = await _getBaseBrSha(owner, repo, branch);
 
-      const getBaseBranchSHA = await octokit.request(
-        "GET /repos/{owner}/{repo}/branches/{branch}",
-        {
-          owner,
-          repo,
-          branch,
-          headers: {
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-        },
-      );
+      // 2. create new branch from protected branch: https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#create-a-reference
+      const newBranch = await _createNewBranch(owner, repo, baseSha);
+      const newBrName = newBranch.data.ref.split('/')[2];
+      console.log('Validate Coorrect newBrName is captured: ', newBrName)
 
-      const sha = getBaseBranchSHA.data.commit.sha;
-      // https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#create-a-reference
-      const newBranch = await octokit.request(
-        "POST /repos/{owner}/{repo}/git/refs",
-        {
-          owner,
-          repo,
-          ref: "refs/heads/addFlag",
-          sha, // verify this is the branch sha
-          headers: {
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-        },
-      );
-      // console.log('newBranch: ', newBranch)
-
-      // push changes to new branch
-      await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
-        owner: owner,
-        repo: repo,
-        path: path,
-        branch: newBranch,
+      // 3.5 get test.yml contents from newBranch & modify
+      const newFileContents = await _getFileContents(owner, repo, newBrName, 'test.yml');
+      console.log('newFileContents: ', newFileContents)
+      const file = Buffer.from(
+            newFileContents.data.content,
+            "base64",
+          ).toString("utf8");
+      const updatedContent = _addFlag(file);
+      const targetFileSha = newFileContents.data.sha;
+      console.log('Validate updatedContent: ', updatedContent)
+      
+      // 4. push changes to new branch
+      const pushedChanges = await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
+        owner,
+        repo,
+        path,
+        branch: newBrName,
         message: "add code qual flag to test.yml",
         committer: {
           name: owner,
           email: owner + "@gmail.com",
         },
         content: updatedContent,
-        sha: fileSHA,
+        sha: targetFileSha, // need to get sha from new branchs; currently uses base branch file's sha
         headers: {
           "X-GitHub-Api-Version": "2022-11-28",
         },
       });
+      console.log('Validate changes pushed to newBr pushedChanges: ', pushedChanges)
 
-      // create PR
+      // 5. create PR
       response = await octokit.request("POST /repos/{owner}/{repo}/pulls", {
         owner,
         repo,
         title: "add code qual flag",
         body: "Please pull these awesome changes in!",
-        head: newBranch,
+        head: newBrName,
         base: branch,
         headers: {
           "X-GitHub-Api-Version": "2022-11-28",
@@ -130,12 +162,14 @@ async function updateFile(
       });
       // more on potential rate limit issues (eg repos with > 200 branches) https://docs.github.com/en/enterprise-cloud@latest/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#about-secondary-rate-limits
     } else {
+      const updatedContent = _addFlag(fileContents);
+
       response = await octokit.request(
         "PUT /repos/{owner}/{repo}/contents/{path}",
         {
-          owner: owner,
-          repo: repo,
-          path: path,
+          owner,
+          repo,
+          path,
           branch: branch,
           message: "add code qual flag to test.yml",
           committer: {
@@ -155,7 +189,8 @@ async function updateFile(
   } catch (error) {
     if (error.response) {
       console.error(
-        `Error! Status: ${error.response.status}. Message: ${error.response.data.message}`,
+        // `Error! Status: ${error.response.status}. Message: ${error.response.data.message}`,
+        `ERROR! ${error}`
       );
     }
     console.error(error);
@@ -206,7 +241,3 @@ async function main() {
 }
 
 main();
-const owner = "ethawn234";
-const path = ".github/workflows/test.yml";
-// const repos = ['gha-docker', 'gha-custom-actions', 'gha-data']; // test.yml
-const repos = ["gha-data"]; // test.yml

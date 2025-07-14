@@ -1,5 +1,5 @@
 import { Octokit } from "octokit";
-import yaml, { JSON_SCHEMA } from "js-yaml";
+import yaml, { DEFAULT_SCHEMA, JSON_SCHEMA } from "js-yaml";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -46,16 +46,29 @@ async function _getFileContents(owner, repo, branch, fileName) {
   return getFileContent;
 }
 
-// Path parameters
-// Name, Type, Description
-// owner string Required The account owner of the repository. The name is not case sensitive.
-// repo string Required The name of the repository without the .git extension. The name is not case sensitive.
-// path string Required path to file
+function _walkObject(obj){
+  const dstructuredObj = {};
+  
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const value = obj[key];
 
-// Body parameters
-// Name, Type, Description
-// message string Required The commit message.
-// content string Required The new file content, using Base64 encoding.
+      // If the value is an object, recursively call the function
+      if (typeof value === 'object' && value !== null) {
+        // console.log(`Processing object at key: ${key}: ${JSON.stringify(value)}`);
+        // obj[key] = JSON.parse(JSON.stringify(value));
+
+        dstructuredObj[key] = _walkObject(value);
+      } else {
+        // console.log(`Value is not an object...${key}: ${value}`);
+        dstructuredObj[key] = value
+      }
+    }
+  }
+  console.log('dstructuredObj: ', dstructuredObj)
+  // return obj;
+}
+
 async function updateFile(
   owner,
   repo,
@@ -66,13 +79,16 @@ async function updateFile(
   isProtected,
 ) {
   try {
-    const data = yaml.load(fileContents, JSON_SCHEMA);
-    data.jobs.validate_get_last_build_wf.steps.push({
-      name: "My Extra Step",
-      run: "echo Hello",
-    });
+    // const data = yaml.load(fileContents, JSON_SCHEMA);
+    const data = yaml.load(fileContents);
+    
+    data.jobs.ci.with['code-qual'] = true;
+    console.dir(data, { depth: null })
+
     const modified = yaml.dump(data);
     const updatedContent = Buffer.from(modified, "utf8").toString("base64");
+    
+    // console.log('updatedContent:', updatedContent)
 
     // if protected branch, only target branch for modification needs to be changed here
     if (isProtected == true) {
@@ -80,42 +96,43 @@ async function updateFile(
       // 1. cut new branch from protected branch
       // 2. modify file
       // 3. create PR
-      const createBranch = await octokit.request(
-        "POST /repos/{owner}/{repo}/git/refs",
-        {
-          owner,
-          repo,
-          ref: `refs/heads/add-flag`,
-          sha: fileSHA,
-          headers: {
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-        },
-      );
+
+      // const createBranch = await octokit.request(
+      //   "POST /repos/{owner}/{repo}/git/refs",
+      //   {
+      //     owner,
+      //     repo,
+      //     ref: `refs/heads/add-flag`,
+      //     sha: fileSHA,
+      //     headers: {
+      //       "X-GitHub-Api-Version": "2022-11-28",
+      //     },
+      //   },
+      // );
     }
 
     // unprotected files updated in all branches; make this request idempotent -> this currently appends; may be necessary if this script is reused for branches that already have required logic
-    const pushChange = await octokit.request(
-      "PUT /repos/{owner}/{repo}/contents/{path}",
-      {
-        owner: owner,
-        repo: repo,
-        path: path,
-        branch: branch,
-        message: "add line to test.yml",
-        committer: {
-          name: owner,
-          email: owner + "@gmail.com",
-        },
-        content: updatedContent,
-        sha: fileSHA,
-        headers: {
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-      },
-    );
+    // const pushChange = await octokit.request(
+    //   "PUT /repos/{owner}/{repo}/contents/{path}",
+    //   {
+    //     owner: owner,
+    //     repo: repo,
+    //     path: path,
+    //     branch: branch,
+    //     message: "add line to test.yml",
+    //     committer: {
+    //       name: owner,
+    //       email: owner + "@gmail.com",
+    //     },
+    //     content: updatedContent,
+    //     sha: fileSHA,
+    //     headers: {
+    //       "X-GitHub-Api-Version": "2022-11-28",
+    //     },
+    //   },
+    // );
 
-    console.log(`pushChange-${branch}: `, pushChange);
+    // console.log(`pushChange-${branch}: `, pushChange);
   } catch (error) {
     if (error.response) {
       console.error(
@@ -130,18 +147,9 @@ async function updateFile(
 async function main() {
   try {
     // auth
-    const authStatus = await auth();
-    if (authStatus.status != 200) {
-      throw new Error(
-        `Auth failure for ${authStatus.data.login}. Status returned: ${authStatus.status}`,
-      );
-    } else {
-      console.log(
-        `Authentication success for ${authStatus.data.login}. Status: ${authStatus.status}`,
-      );
-    }
+    await auth();
 
-    repos.forEach(async (repo, i) => {
+    repos.forEach(async repo => {
       const branches = await getBranches(owner, repo);
 
       if (branches.status == 200 && branches.data.length > 0) {
@@ -153,25 +161,24 @@ async function main() {
             owner,
             repo,
             branchName,
-            "test.yml",
-          ); // replace file with target file
-          const fileSHA = fileContentsResponse.data.sha;
+            "test.yml", // replace file with target file
+          ); 
+          const sha = fileContentsResponse.data.sha;
           const file = Buffer.from(
             fileContentsResponse.data.content,
             "base64",
           ).toString("utf8");
 
-          // console.log(`${repo}-${i}-${branchName}-${fileSHA} type: ${typeof file} file: \n${file}\n`)
-          isProtected == true &&
-            updateFile(
-              owner,
-              repo,
-              path,
-              branchName,
-              file,
-              fileSHA,
-              isProtected,
-            );
+          // console.log(`${repo}-${i}-${branchName}-${sha} type: ${typeof file} file: \n${file}\n`)
+          updateFile(
+            owner,
+            repo,
+            path,
+            branchName,
+            file,
+            sha,
+            isProtected,
+          );
         });
       }
     });

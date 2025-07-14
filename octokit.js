@@ -69,20 +69,34 @@ async function updateFile(
     // if protected branch, only target branch for modification needs to be changed here
     if (isProtected == true) {
       // create new branch from protected branch
-      // push new branch before PR?
+
+      const getBaseBranchSHA = await octokit.request(
+        "GET /repos/{owner}/{repo}/branches/{branch}",
+        {
+          owner,
+          repo,
+          branch,
+          headers: {
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        },
+      );
+
+      const sha = getBaseBranchSHA.data.commit.sha;
       // https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#create-a-reference
       const newBranch = await octokit.request(
         "POST /repos/{owner}/{repo}/git/refs",
         {
           owner,
           repo,
-          ref: `refs/heads/add-flag`,
-          sha: fileSHA,
+          ref: "refs/heads/addFlag",
+          sha, // verify this is the branch sha
           headers: {
             "X-GitHub-Api-Version": "2022-11-28",
           },
         },
       );
+      // console.log('newBranch: ', newBranch)
 
       // push changes to new branch
       await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
@@ -161,6 +175,8 @@ async function main() {
         branches.data.forEach(async (branch) => {
           const isProtected = branch.protected;
           const branchName = branch.name;
+
+          // console.log(`${branchName}`, JSON.stringify(branch.commit))
 
           const fileContentsResponse = await _getFileContents(
             owner,

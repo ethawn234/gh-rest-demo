@@ -1,0 +1,23 @@
+name: get_repo-mapping-var_to_env-var_to_var
+
+on: 
+  workflow_dispatch:
+    inputs:
+      repo-name:
+        description: "which repo?"
+        required: false
+        type: string
+        default: "gha-data"
+jobs:
+  get_var:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ inputs.repo-name }}
+    steps:
+      - name: Get en var
+        id: get-my-var-by-env
+        run: |
+          enviro=$(echo '${{ vars.MAP }}' | jq -r --arg repo "${{ inputs.repo-name }} '.[$repo]'")
+          echo $enviro
+  # testJob:
+    

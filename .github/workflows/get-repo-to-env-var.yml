@@ -17,7 +17,7 @@ jobs:
       - name: mock obj val prep
         id: get-repo
         run: |
-          user=(echo '${{ inputs.user-name }}')
+          user="${{ inputs.user-name }}"
           echo "user=$user"
           echo "user=$user" >> "$GITHUB_OUTPUT"
   get_map:

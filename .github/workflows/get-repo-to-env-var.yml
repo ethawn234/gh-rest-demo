@@ -38,6 +38,6 @@ jobs:
     steps:
       - name: Get myVar
         run: |
-          myVarVal=$(echo '${{ vars.MY_VAR }}' | jq -r '.[].var1')
+          myVarVal=$(echo '${{ vars.MY_VAR }}' | jq -r '.var1')
           echo myVarVal="$myVarVal"
     

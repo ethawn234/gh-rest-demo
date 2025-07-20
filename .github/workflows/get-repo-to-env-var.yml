@@ -29,5 +29,5 @@ jobs:
         run: |
           echo "MAP=${{ vars.MAP }}"
           echo "MY_VAR=${{ vars.MY_VAR }}"
-          myVarVal=$(echo '${{ vars.MY_VAR }}' | jq -r '.var1')
+          myVarVal=$(echo '${{ vars.MY_VAR }}' | jq -r '${{ inputs.user-name }}')
           echo "myVarVal=$myVarVal"    

@@ -3,21 +3,33 @@ name: get_repo-mapping-var_to_env-var_to_var
 on: 
   workflow_dispatch:
     inputs:
-      repo-name:
-        description: "which repo?"
+      user-name:
+        description: "which user?"
         required: false
         type: string
-        default: "gha-data"
+        default: "bob"
 jobs:
-  get_var:
+  prep:
     runs-on: ubuntu-latest
     outputs:
-      environment: ${{ inputs.repo-name }}
+      user: ${{ inputs.user-name }}
+    steps:
+      - name: mock obj val prep
+        id: get-repo
+        run: |
+          user=(echo '${{ inputs.user-name }}')
+          echo "user=$user" >> "$GITHUB_OUTPUT"
+  get_var:
+    runs-on: ubuntu-latest
+    needs: prep
+    # environment: ${{ needs.prep.outputs.enviro }}
     steps:
       - name: Get en var
         id: get-my-var-by-env
         run: |
-          enviro=$(echo '${{ vars.MAP }}' | jq -r --arg repo "${{ inputs.repo-name }} '.[$repo]'")
-          echo $enviro
+          person=$(echo '${{ vars.MAP }}' | jq -r --arg name "${{ needs.prep.outputs.user }} '.[name]'")
+          echo person=$person
+          myVarVal=$(echo '${{ vars.MY_VAR }}' | jq -r '.[].var1')
+          echo myVarVal="$myVarVal"
   # testJob:
     

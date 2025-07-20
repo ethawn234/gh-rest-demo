@@ -18,7 +18,7 @@ jobs:
         id: get-repo
         run: |
           user=(echo '${{ inputs.user-name }}')
-          echo user="$user"
+          echo "user=$user"
           echo "user=$user" >> "$GITHUB_OUTPUT"
   get_map:
     runs-on: ubuntu-latest
@@ -30,7 +30,7 @@ jobs:
         id: get-my-var-by-env
         run: |
           person=$(echo '${{ vars.MAP }}' | jq -r --arg name "${{ needs.prep.outputs.user }}" '.[$name]')
-          echo person="$person"
+          echo "person=$person"
           echo "myVarEnv=$person" >> "$GITHUB_OUTPUT"
   get_my_var:
     runs-on: ubuntu-latest
@@ -40,8 +40,8 @@ jobs:
       - name: Get myVar
         run: |
           user="${{ needs.prep.outputs.user }}"
-          echo user="$user"
+          echo "user=$user"
           myVarEnv="${{ needs.get_map.outputs.myVarEnv }}"
-          echo myVarEnv="$myVarEnv"
+          echo "myVarEnv=$myVarEnv"
           myVarVal=$(echo '${{ vars.MY_VAR }}' | jq -r '.var1')
-          echo myVarVal="$myVarVal"    
+          echo "myVarVal=$myVarVal"    
